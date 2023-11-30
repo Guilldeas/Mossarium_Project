@@ -25,6 +25,9 @@
 *   Dev Roadmap:                                                                *
 *                                                                               *
 *   1) Read sensor data  [v First pass]                                         *
+*      └── Perform the averaging directly on loop() instead of using for,       *
+*          averages will take 1h and we need to always listen for               *
+*          serial commands.                                                     *
 *                                                                               *
 *   2) Operate lighting relay  [v First pass]                                   *
 *                                                                               *
@@ -46,12 +49,15 @@
 
 // -------------------------- Variable declaration ----------------------------- //
 
-int N_Samples = 10;    // Average N samples for each measurements
-int N_Failures = 0;   // Number of failed attempts to read data
+int N_Samples = 10;            // Average N samples for each measurements
+int N_Failures = 0;            // Number of failed attempts to read data
 float humd = 0;
 float temp = 0;
 float avg_humd = 0;
 float avg_temp = 0;
+char Python_Command;           // Carries an order received through serial comm
+char Send_data = 's';          // Serial comm order to send data
+bool reading_failed = false;   // Flag raised when readings fail for all averages
 
 #define DHTPIN 20
 #define DHTTYPE DHT22
@@ -76,7 +82,7 @@ void loop() {
 
   // -------------------------- Read sensor data ----------------------------- //
 
-  // Average N Samples
+  // Average N Samples.
   for (int i = 0; i < N_Samples; ++i){
     // DHT22 samples at =< 0.5Hz. Reading temperature or humidity  takes about 
     // 250 milliseconds
@@ -88,8 +94,8 @@ void loop() {
     // Check if any readings failed and exit early loop early to try again.
     if (isnan(humd) || isnan(temp) ){
 
-      Serial.print(F("Failed to read from DHT sensor. Failed attempts: "));
-      Serial.println(N_Failures);
+      //Serial.print(F("Failed to read from DHT sensor. Failed attempts: "));
+      //Serial.println(N_Failures);
       N_Failures += 1;
       continue;
     }
@@ -103,25 +109,44 @@ void loop() {
   avg_humd = avg_humd / N_Samples;
   avg_temp = avg_temp / N_Samples;
 
-  // -------------------------- Send data to PC ------------------------------ //
-
-  // If readings fail for all measurementes send a string indicating there's a problem
+  // If readings fail for all measurementes raise failure flag
   if (N_Failures == N_Samples){
-    Serial.println("Failed all readings. Could not construct average");
+    reading_failed = true;
     N_Failures = 0;
+
   }
   else {
-    Serial.println(avg_humd);
-    Serial.println(avg_temp);
+    reading_failed = false;
     N_Failures = 0;
+  }
+
+  // ---------------------- Listen and answer commands ------------------------- //
+
+  // Check for bytes on comm buffer
+  if (Serial.available() > 0){
+    Python_Command = Serial.read();
+
+    if(Python_Command == Send_data){
+
+      // Send a string if readings failed
+      if(reading_failed){
+        Serial.println(F("Readings failed, could not compute average"));
+      }
+
+      // Send data if all is good
+      else{
+        Serial.println(avg_humd);
+        Serial.println(avg_temp);
+      }
+    }
   }
 
   // --------------------------- Relay Control -------------------------------- //
   // Output 5V (HIGH) for 1 second
-  digitalWrite(Relay_Pin, HIGH);
+  /*digitalWrite(Relay_Pin, HIGH);
   delay(2000);
 
   // Turn off the output (LOW) for 1 second
   digitalWrite(Relay_Pin, LOW);
-  delay(2000);
+  delay(2000);*/
 }
