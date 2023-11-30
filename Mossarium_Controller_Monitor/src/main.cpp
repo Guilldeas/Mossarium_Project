@@ -31,7 +31,7 @@
 *                                                                               *
 *   2) Operate lighting relay  [v First pass]                                   *
 *                                                                               *
-*   3) Send data to PC for storage when requested  [x]                          *
+*   3) Send data to PC for storage when requested  [v First pass]               *
 *                                                                               *
 *   4) User input/display  [x]                                                  *
 *                                                                               *
