@@ -42,14 +42,17 @@
 
 #include <Arduino.h>
 #include <Adafruit_Sensor.h>
+#include <Adafruit_I2CDevice.h>
+#include <SPI.h>
 #include <DHT.h>
+#include "RTClib.h"
 
 
 
 
 // -------------------------- Variable declaration ----------------------------- //
 
-int N_Samples = 10;            // Average N samples for each measurements
+int N_Samples = 2;            // Average N samples for each measurements
 int N_Failures = 0;            // Number of failed attempts to read data
 float humd = 0;
 float temp = 0;
@@ -57,22 +60,31 @@ float avg_humd = 0;
 float avg_temp = 0;
 char Python_Command;           // Carries an order received through serial comm
 char Send_data = 's';          // Serial comm order to send data
+bool take_reading = false;
 bool reading_failed = false;   // Flag raised when readings fail for all averages
 
-#define DHTPIN 20
+#define DHTPIN 2
 #define DHTTYPE DHT22
 const int Relay_Pin = 22;
 
+// Create objects
 DHT dht(DHTPIN, DHTTYPE);
+RTC_DS3231 rtc;
 
 
 void setup() {
 
-  // Initialize DHT sensor.
   Serial.begin(9600);
+
+  // Initialize humidity/temperature sensor.
   Serial.println(F("DHT22 Startup"));
   dht.begin();
-
+  
+  // Initialize Real Time Clock module.
+  Serial.println(F("RTC DS3231 Startup"));
+  if (!rtc.begin()){
+    Serial.println(F("Failed to startup RTC"));
+  }
   // Setup relay
     pinMode(Relay_Pin, OUTPUT);
 
@@ -80,29 +92,40 @@ void setup() {
 
 void loop() {
 
+  // ----------------------- Check time for triggering ------------------------ //
+
+  DateTime now = rtc.now();
+
+  // Take a sample every 10 minutes (set as seconds for testing purposes)
+  if (now.second() % 10 == 0){
+    take_reading = true;
+    delay(1000);
+  }
+  else{
+    take_reading = false;
+  }
   // -------------------------- Read sensor data ----------------------------- //
 
   // Average N Samples.
-  for (int i = 0; i < N_Samples; ++i){
+  if (take_reading){
     // DHT22 samples at =< 0.5Hz. Reading temperature or humidity  takes about 
     // 250 milliseconds
-    delay(2000);
+    // delay(2000);
     
-    humd = dht.readHumidity();
-    temp = dht.readTemperature();
+    avg_humd = dht.readHumidity();
+    avg_temp = dht.readTemperature();
 
     // Check if any readings failed and exit early loop early to try again.
-    if (isnan(humd) || isnan(temp) ){
+    if (isnan(avg_humd) || isnan(avg_temp) ){
 
-      //Serial.print(F("Failed to read from DHT sensor. Failed attempts: "));
-      //Serial.println(N_Failures);
+      Serial.print(F("Failed to read from DHT sensor. Failed attempts: "));
+      Serial.println(N_Failures);
       N_Failures += 1;
-      continue;
     }
 
     // Only if measurement was succesful add to average
-    avg_humd += humd;
-    avg_temp += temp;
+    avg_humd += avg_humd;
+    avg_temp += avg_temp;
   }
 
   // Compute average
@@ -135,7 +158,9 @@ void loop() {
 
       // Send data if all is good
       else{
+        Serial.print("Average humidity: ");
         Serial.println(avg_humd);
+        Serial.print("Average temperature: ");
         Serial.println(avg_temp);
       }
     }
